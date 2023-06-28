@@ -15,7 +15,7 @@
 (block_scalar) @string
 (string_scalar) @string
 (escape_sequence) @constant.character.escape
-(integer_scalar) @constant.numeric.integer
+(integer_scalar) @constant.numericcc.integer
 (float_scalar) @constant.numeric.float
 (comment) @comment
 (anchor_name) @type
@@ -41,3 +41,7 @@
 ] @punctuation.bracket
 
 ["*" "&" "---" "..."] @punctuation.special
+
+;(block_mapping_pair
+;  key: (flow_node) @ahoj (#eq? @ahoj "run")
+;  value: (flow_node (plain_scalar (string_scalar)) @bla))

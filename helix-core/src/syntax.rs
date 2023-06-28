@@ -668,10 +668,6 @@ impl LanguageConfiguration {
             .as_ref()
     }
 
-    pub fn scope(&self) -> &str {
-        &self.scope
-    }
-
     fn load_query(&self, kind: &str) -> Option<Query> {
         let query_text = read_query(&self.language_id, kind);
         if query_text.is_empty() {
@@ -811,13 +807,6 @@ impl Loader {
             .and_then(|cap| self.language_config_ids_by_shebang.get(&cap[1]));
 
         configuration_id.and_then(|&id| self.language_configs.get(id).cloned())
-    }
-
-    pub fn language_config_for_scope(&self, scope: &str) -> Option<Arc<LanguageConfiguration>> {
-        self.language_configs
-            .iter()
-            .find(|config| config.scope == scope)
-            .cloned()
     }
 
     pub fn language_config_for_language_id(&self, id: &str) -> Option<Arc<LanguageConfiguration>> {

@@ -1122,7 +1122,7 @@ impl Editor {
                 .map_err(|e| {
                     log::error!(
                         "Failed to initialize the language servers for `{}` {{ {} }}",
-                        language.scope(),
+                        language.scope,
                         e
                     )
                 })
