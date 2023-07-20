@@ -2698,3 +2698,17 @@ file-types = ["webc"]
 roots = []
 indent = { tab-width = 2, unit = "  " }
 grammar = "html"
+
+[[language]]
+name = "github-actions-yaml"
+scope = "source.yaml"
+file-types = [
+  { extension = "yaml", sub_path = ".github/workflows/" },
+  { extension = "yml", sub_path = ".github/workflows/" },
+]
+roots = [".github/"]
+comment-token = "#"
+indent = { tab-width = 2, unit = "  " }
+language-servers = ["yaml-language-server"]
+injection-regex = "gha-yml|gha-yaml"
+grammar = "yaml"

@@ -164,6 +164,10 @@ pub enum FileType {
     /// The suffix of a file. This is compared to a given file's absolute
     /// path, so it can be used to detect files based on their directories.
     Suffix(String),
+    /// The extension of the file and subpath of the files absolute path.
+    /// Can be used to detect slight variations of other know file types. For
+    /// example this can be used to detect GitHub Action yaml variant.
+    ExtensionSubPath(String, String),
 }
 
 impl Serialize for FileType {
@@ -178,6 +182,12 @@ impl Serialize for FileType {
             FileType::Suffix(suffix) => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("suffix", &suffix.replace(std::path::MAIN_SEPARATOR, "/"))?;
+                map.end()
+            }
+            FileType::ExtensionSubPath(extension, sub_path) => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("extension", &extension)?;
+                map.serialize_entry("sub_path", &sub_path)?;
                 map.end()
             }
         }
@@ -209,19 +219,39 @@ impl<'de> Deserialize<'de> for FileType {
             where
                 M: serde::de::MapAccess<'de>,
             {
-                match map.next_entry::<String, String>()? {
-                    Some((key, suffix)) if key == "suffix" => Ok(FileType::Suffix({
+                let mut suffix: Option<String> = None;
+                let mut extension: Option<String> = None;
+                let mut sub_path: Option<String> = None;
+
+                while let Some((key, value)) = map.next_entry::<String, String>()? {
+                    match key.as_str() {
+                        "suffix" => suffix = Some(value),
+                        "sub_path" => sub_path = Some(value),
+                        "extension" => extension = Some(value),
+                        _ => {
+                            return Err(serde::de::Error::custom(format!(
+                                "unknown key in `file-types` list: {}",
+                                key
+                            )))
+                        }
+                    }
+                }
+                match (suffix, extension, sub_path) {
+                    (Some(suffix), None, None) => Ok(FileType::Suffix({
                         // FIXME: use `suffix.replace('/', std::path::MAIN_SEPARATOR_STR)`
                         //        if MSRV is updated to 1.68
                         let mut separator = [0; 1];
                         suffix.replace('/', std::path::MAIN_SEPARATOR.encode_utf8(&mut separator))
                     })),
-                    Some((key, _value)) => Err(serde::de::Error::custom(format!(
-                        "unknown key in `file-types` list: {}",
-                        key
-                    ))),
-                    None => Err(serde::de::Error::custom(
-                        "expected a `suffix` key in the `file-types` entry",
+                    (None, Some(extension), Some(sub_path)) => Ok({
+                        // FIXME: use `suffix.replace('/', std::path::MAIN_SEPARATOR_STR)`
+                        //        if MSRV is updated to 1.68
+                        let mut separator = [0; 1];
+                        let sub_path = sub_path.replace('/', std::path::MAIN_SEPARATOR.encode_utf8(&mut separator));
+                        FileType::ExtensionSubPath(extension, sub_path)
+                    }),
+                    _ => Err(serde::de::Error::custom(
+                        "expected a either `suffix` key or pair of `extension` and `sub_path` keys in the `file-types` entry",
                     )),
                 }
             }
@@ -743,6 +773,7 @@ pub struct Loader {
     // highlight_names ?
     language_configs: Vec<Arc<LanguageConfiguration>>,
     language_config_ids_by_extension: HashMap<String, usize>, // Vec<usize>
+    language_config_ids_by_sub_path: HashMap<(String, String), usize>,
     language_config_ids_by_suffix: HashMap<String, usize>,
     language_config_ids_by_shebang: HashMap<String, usize>,
 
@@ -759,6 +790,7 @@ impl Loader {
             language_config_ids_by_extension: HashMap::new(),
             language_config_ids_by_suffix: HashMap::new(),
             language_config_ids_by_shebang: HashMap::new(),
+            language_config_ids_by_sub_path: HashMap::new(),
             scopes: ArcSwap::from_pointee(Vec::new()),
         };
 
@@ -775,6 +807,9 @@ impl Loader {
                     FileType::Suffix(suffix) => loader
                         .language_config_ids_by_suffix
                         .insert(suffix.clone(), language_id),
+                    FileType::ExtensionSubPath(extension, sub_path) => loader
+                        .language_config_ids_by_sub_path
+                        .insert((extension.clone(), sub_path.clone()), language_id),
                 };
             }
             for shebang in &config.shebangs {
@@ -796,6 +831,19 @@ impl Loader {
             .file_name()
             .and_then(|n| n.to_str())
             .and_then(|file_name| self.language_config_ids_by_extension.get(file_name))
+            .or_else(|| {
+                self.language_config_ids_by_sub_path.iter().find_map(
+                    |((extension, sub_path), id)| {
+                        if path.extension()?.to_str()? == extension
+                            && path.to_str()?.contains(sub_path)
+                        {
+                            Some(id)
+                        } else {
+                            None
+                        }
+                    },
+                )
+            })
             .or_else(|| {
                 path.extension()
                     .and_then(|extension| extension.to_str())
